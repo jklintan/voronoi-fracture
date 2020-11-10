@@ -25,9 +25,8 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     }
 
     // Use the first kMesh object in the selection
-    MObject component;
     MDagPath node;
-    it.getDagPath(node, component);
+    it.getDagPath(node);
 
     MFnDagNode node_fn(node);
     displayInfo(MString("Fracturing ") + node_fn.name());
