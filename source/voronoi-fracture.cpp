@@ -67,14 +67,13 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     MStatus status;
     for (size_t i = 0; i < points.size(); i++)
     {
-        const MPoint &p0 = points[i];
+        const MPoint& p0 = points[i];
 
-        displayInfo(("Processing fragment " + std::to_string(i) + " for point: " + 
+        displayInfo(("Processing fragment " + std::to_string(i) + " for point: " +
             std::to_string(p0.x) + ", " +
             std::to_string(p0.y) + ", " +
             std::to_string(p0.z)).c_str()
         );
-
 
         MObject fragment_transform = dag_modifier.createNode("transform", fragment_group, &status);
         dag_modifier.renameNode(fragment_transform, ("fragment_" + std::to_string(i)).c_str());
@@ -101,7 +100,7 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             // - Close resulting hole
         }
     }
-    
+
     return MS::kSuccess;
 }
 
