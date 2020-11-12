@@ -1,16 +1,13 @@
-#ifndef MENU_UI
-#define MENU_UI
+#pragma once
 
 #include <maya/MPxCommand.h>
 
 class MenuUI : public MPxCommand
 {
 public:
-  MenuUI();
-  ~MenuUI() override;
+    MenuUI();
+    ~MenuUI() override;
 
-  MStatus doIt(const MArgList& args) override;
-  static void* creator();
+    MStatus doIt(const MArgList& args) override;
+    static void* creator();
 };
-
-#endif

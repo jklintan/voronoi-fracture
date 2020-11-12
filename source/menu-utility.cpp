@@ -10,3 +10,8 @@ void removeMenu() {
     MString cleanupCmd = MString("if maya.cmds.menu('fractureMenu', ex=1):\n   maya.cmds.deleteUI('fractureMenu')");
     MGlobal::executePythonCommand(cleanupCmd);
 }
+
+void createWindow() {
+    MString windowCmd = MString("maya.cmds.showWindow(maya.cmds.window(title = 'Fracturing Menu', widthHeight = (500, 400)))");
+    MGlobal::executePythonCommand(windowCmd);
+}
