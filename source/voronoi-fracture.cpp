@@ -136,20 +136,26 @@ MStatus VoronoiFracture::clipAndCapMEL(const std::string& object_name, const Pla
     const MVector& n = clip_plane.normal;
     const MVector& p = clip_plane.point;
 
-    char cmd[1000];
-    std::snprintf(cmd, 1000, R"mel(
-    {
-        select %s;
-        float $angles[3] = `angleBetween -euler -v1 0 0 1 -v2 %f %f %f`;
-        polyCut -deleteFaces on -cutPlaneCenter %f %f %f -cutPlaneRotate $angles[0] $angles[1] $angles[2];
-                
-        int $faces[] = `polyEvaluate -face`;
-        if($faces[0] > 2)
+    auto format = [&](char* buffer, size_t size) 
+    { 
+        return std::snprintf(buffer, size, R"mel(
         {
-            polyCloseBorder;
+            select %s;
+            float $angles[3] = `angleBetween -euler -v1 0 0 1 -v2 %f %f %f`;
+            polyCut -deleteFaces on -cutPlaneCenter %f %f %f -cutPlaneRotate $angles[0] $angles[1] $angles[2];
+                
+            int $faces[] = `polyEvaluate -face`;
+            if($faces[0] > 2)
+            {
+                polyCloseBorder;
+            }
         }
-    }
-    )mel", object_name.c_str(), -n.x, -n.y, -n.z, p.x, p.y, p.z);
+        )mel", object_name.c_str(), -n.x, -n.y, -n.z, p.x, p.y, p.z);
+    };
 
-    return MGlobal::executeCommand(cmd);
+    size_t size = format(nullptr, 0);
+    std::unique_ptr<char[]> command(new char[size]);
+    format(command.get(), size);
+
+    return MGlobal::executeCommand(command.get());
 }
