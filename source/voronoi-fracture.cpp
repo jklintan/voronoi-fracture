@@ -131,7 +131,7 @@ void* VoronoiFracture::creator()
 
 MStatus VoronoiFracture::clipAndCapMEL(const std::string& object_name, const Plane& clip_plane)
 {
-    const MVector& n = -clip_plane.normal;
+    const MVector& n = clip_plane.normal;
     const MVector& p = clip_plane.point;
 
     char cmd[1000];
@@ -147,7 +147,7 @@ MStatus VoronoiFracture::clipAndCapMEL(const std::string& object_name, const Pla
             polyCloseBorder;
         }
     }
-    )mel", object_name.c_str(), n.x, n.y, n.z, p.x, p.y, p.z);
+    )mel", object_name.c_str(), -n.x, -n.y, -n.z, p.x, p.y, p.z);
 
     return MGlobal::executeCommand(cmd);
 }
