@@ -153,7 +153,7 @@ MStatus VoronoiFracture::clipAndCapMEL(const std::string& object_name, const Pla
         )mel", object_name.c_str(), -n.x, -n.y, -n.z, p.x, p.y, p.z);
     };
 
-    size_t size = format(nullptr, 0);
+    int size = format(nullptr, 0) + 1;
     std::unique_ptr<char[]> command(new char[size]);
     format(command.get(), size);
 
