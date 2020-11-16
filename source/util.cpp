@@ -2,7 +2,6 @@
 
 #include <random>
 #include <maya/MPoint.h>
-#include <maya/MGlobal.h>
 
 double Plane::signedDistance(const MVector& x)
 {
