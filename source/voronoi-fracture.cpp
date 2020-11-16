@@ -54,9 +54,11 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
     auto begin = std::chrono::high_resolution_clock::now();
 
-    // Generate uniform points in bounding box of mesh (in local object space)
+    MMatrix transformation_matrix = node.inclusiveMatrix();
+
+    // Generate uniform points in bounding box of mesh
     MBoundingBox BB = node_fn.boundingBox();
-    std::vector<MPoint> points = generateUniformPoints(BB.min(), BB.max(), num_fragments);
+    std::vector<MPoint> points = generateUniformPoints(BB.min() * transformation_matrix, BB.max() * transformation_matrix, num_fragments);
 
     MDagModifier dag_modifier;
 
@@ -66,7 +68,7 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     dag_modifier.doIt();
 
     // Copy transform from original mesh
-    MFnTransform(fragment_group).set(node.inclusiveMatrix());
+    MFnTransform(fragment_group).set(transformation_matrix);
 
     MStatus status;
     for (size_t i = 0; i < points.size(); i++)
