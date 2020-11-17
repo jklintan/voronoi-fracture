@@ -4,21 +4,38 @@
 #include <maya/MGlobal.h>
 
 #include "voronoi-fracture.h"
-#include "menu-utility.h"
 #include "menuUI.h"
+
+#include <iostream>
+#include <fstream>
+
+bool is_file_exist(const char* fileName)
+{
+    std::ifstream infile(fileName);
+    return infile.good();
+}
+
 
 MStatus initializePlugin(MObject obj)
 {
     MFnPlugin plugin(obj, "Josefine Klintberg and Linus Mossberg", "0.0", "Any");
     MStatus status = plugin.registerCommand("voronoiFracture", VoronoiFracture::creator);
-    MStatus statusUI = plugin.registerCommand("menuUI", MenuUI::creator);
-
-    createMenu();
 
     if (!status)
     {
         status.perror("registerCommand");
     }
+
+    status = plugin.registerCommand("menuUI", MenuUI::creator);
+
+    if (!status)
+    {
+        status.perror("registerCommand");
+    }
+
+    // Create UI menu
+    MString menuCmd = "maya.cmds.menuUI()";
+    MGlobal::executePythonCommand(menuCmd);
 
     return status;
 }
@@ -26,10 +43,18 @@ MStatus initializePlugin(MObject obj)
 MStatus uninitializePlugin(MObject obj)
 {
     MFnPlugin plugin(obj);
-    MStatus status = plugin.deregisterCommand("voronoiFracture");
-    MStatus statusUI = plugin.deregisterCommand("menuUI");
 
-    removeMenu();
+    // Remove UI Window
+    MenuUI::remove();
+
+    MStatus status = plugin.deregisterCommand("voronoiFracture");
+
+    if (!status)
+    {
+        status.perror("registerCommand");
+    }
+
+    status = plugin.deregisterCommand("menuUI");
 
     if (!status)
     {

@@ -47,12 +47,12 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
         MPoint p = vertex_it.position(MSpace::kWorld);
 
         displayInfo((
-            std::to_string(p.x) + ", " +
-            std::to_string(p.y) + ", " +
+            std::to_string(p.x) + ", " + 
+            std::to_string(p.y) + ", " + 
             std::to_string(p.z)).c_str()
         );
     }
-
+    
     return MS::kSuccess;
 }
 
