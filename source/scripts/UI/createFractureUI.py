@@ -4,13 +4,20 @@ inline constexpr char createFractureUI[] = R"py(
 
 import maya.cmds as mc
 
+existing = mc.ls(l=True)
+
+def Diff(li1, li2):
+    li_dif = [i for i in li1 + li2 if i not in li1 or i not in li2]
+    return li_dif
+
 def _applySlider(*args):
     print("Applying Slider Value " + str(args[0]))
 
 def _delete(*args):
-    l = mc.ls(type='geometryShape')
-    mc.select(l)
-    if(len(l) > 0):
+    l = mc.ls(l=True)
+    addedObj = Diff(existing, l)
+    mc.select(addedObj)
+    if(len(addedObj) > 0):
         mc.delete()
 
 def _fracture(*args):
