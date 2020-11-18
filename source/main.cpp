@@ -1,6 +1,12 @@
 #include <maya/MObject.h>
 #include <maya/MStatus.h>
 #include <maya/MFnPlugin.h>
+#include <maya/MGlobal.h>
+
+#include "scripts/initializeUI.py"
+#include "scripts/uninitializeUI.py"
+#include "scripts/UI/menu.py"
+#include "scripts/UI/createFractureUI.py"
 
 #include "voronoi-fracture.h"
 
@@ -12,7 +18,13 @@ MStatus initializePlugin(MObject obj)
     if (!status)
     {
         status.perror("registerCommand");
+        return status;
     }
+
+    // Create UI menu
+    status = MGlobal::executePythonCommand(
+        (std::string(menu) + createFractureUI + initialize_UI).c_str()
+    );
 
     return status;
 }
@@ -20,12 +32,16 @@ MStatus initializePlugin(MObject obj)
 MStatus uninitializePlugin(MObject obj)
 {
     MFnPlugin plugin(obj);
-    MStatus status = plugin.deregisterCommand("voronoiFracture");
 
+    MStatus status = plugin.deregisterCommand("voronoiFracture");
     if (!status)
     {
         status.perror("registerCommand");
+        return status;
     }
+
+    // Remove UI Window
+    status = MGlobal::executePythonCommand(uninitialize_UI);
 
     return status;
 }
