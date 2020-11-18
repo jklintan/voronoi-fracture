@@ -3,6 +3,11 @@
 #include <random>
 #include <maya/MPoint.h>
 
+double Plane::signedDistance(const MVector& x)
+{
+    return normal * (x - point);
+}
+
 std::vector<MPoint> generateUniformPoints(const MPoint& min, const MPoint& max, size_t num)
 {
     std::mt19937_64 engine(std::random_device{}());
@@ -18,13 +23,7 @@ std::vector<MPoint> generateUniformPoints(const MPoint& min, const MPoint& max, 
     return points;
 }
 
-MPlane getBisectorPlane(const MPoint& p0, const MPoint& p1)
+Plane getBisectorPlane(const MPoint& p0, const MPoint& p1)
 {
-    MVector normal = p1 - p0;
-    MVector midpoint = (p0 + p1) * 0.5;
-
-    MPlane plane;
-    plane.setPlane(normal, -midpoint * normal);
-
-    return plane;
+    return Plane(p1 - p0, (p0 + p1) * 0.5);
 }

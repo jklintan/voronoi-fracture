@@ -1,5 +1,7 @@
 #include "voronoi-fracture.h"
 
+#include <chrono>
+
 #include <maya/MGlobal.h>
 #include <maya/MDagPath.h>
 #include <maya/MObject.h>
@@ -50,9 +52,13 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
     MObject mesh = node_fn.object();
 
-    // Generate uniform points in bounding box of mesh (in local object space)
+    auto begin = std::chrono::high_resolution_clock::now();
+
+    MMatrix transformation_matrix = node.inclusiveMatrix();
+
+    // Generate uniform points in bounding box of mesh
     MBoundingBox BB = node_fn.boundingBox();
-    std::vector<MPoint> points = generateUniformPoints(BB.min(), BB.max(), num_fragments);
+    std::vector<MPoint> points = generateUniformPoints(BB.min() * transformation_matrix, BB.max() * transformation_matrix, num_fragments);
 
     MDagModifier dag_modifier;
 
@@ -62,7 +68,7 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     dag_modifier.doIt();
 
     // Copy transform from original mesh
-    MFnTransform(fragment_group).set(node.inclusiveMatrix());
+    MFnTransform(fragment_group).set(transformation_matrix);
 
     MStatus status;
     for (size_t i = 0; i < points.size(); i++)
@@ -75,8 +81,10 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             std::to_string(p0.z)).c_str()
         );
 
+        std::string fragment_name = ("fragment_" + std::to_string(i)).c_str();
+
         MObject fragment_transform = dag_modifier.createNode("transform", fragment_group, &status);
-        dag_modifier.renameNode(fragment_transform, ("fragment_" + std::to_string(i)).c_str());
+        dag_modifier.renameNode(fragment_transform, fragment_name.c_str());
         dag_modifier.doIt();
 
         // Duplicate mesh
@@ -92,14 +100,28 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
         {
             if (j == i) continue;
 
-            MPlane cut_plane = getBisectorPlane(p0, points[j]);
+            Plane clip_plane = getBisectorPlane(p0, points[j]);
 
-            // TODO: 
-            // - Cut fragment with cut_plane
-            // - Remove faces on the positive side (with respect to normal) of the cut_plane
-            // - Close resulting hole
+            status = clipAndCapMEL(fragment_name, clip_plane);
+
+            if (!status)
+            {
+                displayError("Could not execute MEL clip and cap command.");
+                return status;
+            }
+
+            // Object was completely clipped
+            if (fragment.numPolygons() < 3)
+            {
+                dag_modifier.deleteNode(fragment_transform);
+                dag_modifier.doIt();
+                break;
+            }
         }
     }
+    
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - begin).count();
+    displayInfo(("Fracture time: " + std::to_string(duration * 1e-6) + " seconds.").c_str());
 
     return MS::kSuccess;
 }
@@ -107,4 +129,33 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 void* VoronoiFracture::creator()
 {
     return new VoronoiFracture();
+}
+
+MStatus VoronoiFracture::clipAndCapMEL(const std::string& object_name, const Plane& clip_plane)
+{
+    const MVector& n = clip_plane.normal;
+    const MVector& p = clip_plane.point;
+
+    auto format = [&](char* buffer, size_t size) 
+    { 
+        return std::snprintf(buffer, size, R"mel(
+        {
+            select %s;
+            float $angles[3] = `angleBetween -euler -v1 0 0 1 -v2 %f %f %f`;
+            polyCut -deleteFaces on -cutPlaneCenter %f %f %f -cutPlaneRotate $angles[0] $angles[1] $angles[2];
+                
+            int $faces[] = `polyEvaluate -face`;
+            if($faces[0] > 2)
+            {
+                polyCloseBorder;
+            }
+        }
+        )mel", object_name.c_str(), -n.x, -n.y, -n.z, p.x, p.y, p.z);
+    };
+
+    int size = format(nullptr, 0) + 1;
+    std::unique_ptr<char[]> command(new char[size]);
+    format(command.get(), size);
+
+    return MGlobal::executeCommand(command.get());
 }
