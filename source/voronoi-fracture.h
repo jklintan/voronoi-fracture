@@ -1,6 +1,7 @@
 #pragma once
 
 #include <maya/MPxCommand.h>
+#include <maya/MSyntax.h>
 
 struct Plane;
 
@@ -12,6 +13,7 @@ public:
 
     MStatus doIt(const MArgList& args) override;
     static void* creator();
+    static MSyntax syntaxCreator();
 
 private:
     MStatus clipAndCapMEL(const std::string& object_name, const Plane& clip_plane);
