@@ -15,6 +15,7 @@
 #include <maya/MFnTransform.h>
 #include <maya/MMatrix.h>
 #include <maya/MArgList.h>
+#include <maya/MArgDatabase.h>
 
 #include "util.h"
 
@@ -24,13 +25,12 @@ VoronoiFracture::~VoronoiFracture() {};
 
 MStatus VoronoiFracture::doIt(const MArgList& args)
 {
-    int num_fragments = 5;
-    for (unsigned int i = 0; i < args.length(); i++)
+    MArgDatabase arg_data(syntaxCreator(), args);
+
+    unsigned int num_fragments = 5;
+    if (arg_data.isFlagSet("-num_fragments"))
     {
-        if (args.asString(i) == MString("-num_fragments"))
-        {
-            args.get(i + 1, num_fragments);
-        }
+        arg_data.getFlagArgument("-num_fragments", 0, num_fragments);
     }
 
     MSelectionList list;
@@ -129,6 +129,13 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 void* VoronoiFracture::creator()
 {
     return new VoronoiFracture();
+}
+
+MSyntax VoronoiFracture::syntaxCreator()
+{
+    MSyntax syntax;
+    syntax.addFlag("-n", "-num_fragments", MSyntax::kUnsigned);
+    return syntax;
 }
 
 MStatus VoronoiFracture::clipAndCapMEL(const std::string& object_name, const Plane& clip_plane)

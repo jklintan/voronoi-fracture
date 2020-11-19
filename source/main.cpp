@@ -13,7 +13,7 @@
 MStatus initializePlugin(MObject obj)
 {
     MFnPlugin plugin(obj, "Josefine Klintberg and Linus Mossberg", "0.0", "Any");
-    MStatus status = plugin.registerCommand("voronoiFracture", VoronoiFracture::creator);
+    MStatus status = plugin.registerCommand("voronoiFracture", VoronoiFracture::creator, VoronoiFracture::syntaxCreator);
 
     if (!status)
     {
