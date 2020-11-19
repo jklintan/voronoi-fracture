@@ -93,15 +93,15 @@ class CreateFractureUI:
         mc.separator(height=30)
         
         # A slider designed to alter number of fragments     
-        fragProp = mc.intSliderGrp(label=" Number of Fragments", value = NUM_FRAG_DEFAULT, min=2, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.2), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.55)])
+        fragProp = mc.intSliderGrp(label=" Number of Fragments", value = NUM_FRAG_DEFAULT, min=2, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.intSliderGrp(fragProp, e=True, changeCommand = partial(self._applySlider, 'NUM_FRAGMENTS'))
         
         # A slider designed to alter PROPERTY 1        
-        sliderProp1 = mc.floatSliderGrp(label=" Property 1", min=0, max=10, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.2), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.55)])
+        sliderProp1 = mc.floatSliderGrp(label=" Property 1", min=0, max=10, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.floatSliderGrp(sliderProp1, e=True)
         
         # A slider designed to alter PROPERTY 2      
-        sliderProp2 = mc.floatSliderGrp(label=" Property 2", min=0, max=10, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.2), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.55)])
+        sliderProp2 = mc.floatSliderGrp(label=" Property 2", min=0, max=10, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.floatSliderGrp(sliderProp2, e=True)
 
         # Apply button
