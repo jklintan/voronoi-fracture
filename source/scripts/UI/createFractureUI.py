@@ -4,8 +4,6 @@ inline constexpr char createFractureUI[] = R"py(
 
 import maya.cmds as mc
 
-existing = mc.ls(l=True)
-
 def Diff(li1, li2):
     li_dif = [i for i in li1 + li2 if i not in li1 or i not in li2]
     return li_dif
@@ -14,10 +12,19 @@ def _applySlider(*args):
     print("Applying Slider Value " + str(args[0]))
 
 def _delete(*args):
-    l = mc.ls(l=True)
-    addedObj = Diff(existing, l)
-    mc.select(addedObj)
-    if(len(addedObj) > 0):
+    # Select all non-locked transforms
+    l = mc.ls(transforms = True, readOnly = False) 
+
+    # Get all cameras 
+    cameras = cmds.ls(type=('camera'), l=True)
+    # Filter all startup cameras that should not be deleted
+    startup_cameras = [camera for camera in cameras if cmds.camera(cmds.listRelatives(camera, parent=True)[0], startupCamera=True, q=True)]
+    startup_cameras_transforms = map(lambda x: cmds.listRelatives(x, parent=True)[0], startup_cameras)
+    
+    # Select all transforms that are deletable
+    selection = Diff(l, startup_cameras_transforms)
+    mc.select(selection)
+    if(len(selection) > 0):
         mc.delete()
 
 def _fracture(*args):
