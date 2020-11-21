@@ -27,3 +27,11 @@ Plane getBisectorPlane(const MPoint& p0, const MPoint& p1)
 {
     return Plane(p1 - p0, (p0 + p1) * 0.5);
 }
+
+MVector orthogonalUnitVector(const MVector& v)
+{
+    if (std::abs(v.x) > std::abs(v.y))
+        return MVector(-v.z, 0, v.x) / std::sqrt(v.x * v.x + v.z * v.z);
+    else
+        return MVector(0, v.z, -v.y) / std::sqrt(v.y * v.y + v.z * v.z);
+}

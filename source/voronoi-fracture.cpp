@@ -11,11 +11,13 @@
 #include <maya/MFnMesh.h>
 #include <maya/MBoundingBox.h>
 #include <maya/MPlane.h>
-#include <maya/MDagModifier.h>
 #include <maya/MFnTransform.h>
 #include <maya/MMatrix.h>
 #include <maya/MArgList.h>
 #include <maya/MArgDatabase.h>
+#include <maya/MPointArray.h>
+#include <maya/MIntArray.h>
+#include <maya/MObjectArray.h>
 
 #include "util.h"
 
@@ -59,11 +61,20 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
     auto begin = std::chrono::high_resolution_clock::now();
 
-    MMatrix transformation_matrix = node.inclusiveMatrix();
+    // Transformation matrix
+    MMatrix M = node.inclusiveMatrix();
 
     // Generate uniform points in bounding box of mesh
     MBoundingBox BB = node_fn.boundingBox();
-    std::vector<MPoint> points = generateUniformPoints(BB.min() * transformation_matrix, BB.max() * transformation_matrix, num_fragments);
+
+    MVector extent = BB.max() - BB.min();
+    double clip_triangle_half_extent = extent.length() * 100.0;
+
+    std::vector<MPoint> points;
+    if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
+        points = generateUniformPoints(BB.min(), BB.max(), num_fragments);
+    else
+        points = generateUniformPoints(BB.min() * M, BB.max() * M, num_fragments);
 
     std::vector<MObject> clipped;
 
@@ -90,11 +101,14 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
             Plane clip_plane = getBisectorPlane(p0, points[j]);
 
-            status = internalClipAndCap(fragment.fullPathName().asChar(), clip_plane);
+            if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
+                status = booleanClipAndCap(fragment, clip_plane, clip_triangle_half_extent);
+            else
+                status = internalClipAndCap(fragment.fullPathName().asChar(), clip_plane);
 
             if (!status)
             {
-                displayError("Could not execute clip and cap command.");
+                displayError("Could not execute clip and cap.");
                 return status;
             }
 
@@ -106,8 +120,6 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             }
         }
     }
-
-    MDagModifier dag_modifier;
 
     // Delete original objects
     if (delete_object) dag_modifier.deleteNode(node_fn.parent(0));
@@ -153,6 +165,47 @@ MStatus VoronoiFracture::internalClipAndCap(const char* object, const Plane& cli
         "Util.clipAndCap('%s', [%f,%f,%f], [%f,%f,%f])", 
         object, -n.x, -n.y, -n.z, p.x, p.y, p.z
     ));
+}
+
+// Mesh clip and cap using boolean intersection from C++ api
+MStatus VoronoiFracture::booleanClipAndCap(MFnMesh& object, const Plane& clip_plane, double half_extent)
+{
+    // Generate arbitrary orthonormal basis for plane. X and Y span the plane.
+    MVector X = orthogonalUnitVector(clip_plane.normal);
+    MVector Y = clip_plane.normal ^ X;
+
+    const auto& p = clip_plane.point;
+
+    MPoint vertices[] = {
+        p + Y * half_extent,
+        p - X * half_extent - Y * half_extent,
+        p + X * half_extent - Y * half_extent
+    };
+
+    constexpr int indices[] = { 0, 1, 2 };
+
+    MStatus status;
+
+    // Create triangle polygon clipping plane
+    MFnMesh triangle_plane;
+    (void)triangle_plane.create(3, 1, MPointArray(vertices, 3), MIntArray(1, 3), MIntArray(indices, 3), MObject::kNullObj, &status);
+
+    if (!status)
+    {
+        displayError(status.errorString());
+        return status;
+    }
+
+    MObjectArray objects;
+    objects.append(object.object());
+    objects.append(triangle_plane.object());
+
+    status = object.booleanOps(MFnMesh::kIntersection, objects, true);
+
+    dag_modifier.deleteNode(triangle_plane.object());
+    dag_modifier.doIt();
+
+    return status;
 }
 
 MStatus VoronoiFracture::generateFragmentMeshes(const char* object, size_t num, MFnDagNode& parent)

@@ -1,8 +1,12 @@
 #pragma once
 
+#include <vector>
+
 #include <maya/MPxCommand.h>
 #include <maya/MSyntax.h>
 #include <maya/MArgDatabase.h>
+#include <maya/MDagModifier.h>
+#include <maya/MPoint.h>
 
 struct Plane;
 
@@ -18,6 +22,8 @@ public:
 
 private:
     MStatus internalClipAndCap(const char* object, const Plane& clip_plane);
+    MStatus booleanClipAndCap(MFnMesh& object, const Plane& clip_plane, double half_extent);
+
     MStatus generateFragmentMeshes(const char* object, size_t num, MFnDagNode& parent);
 
     template<class T, MSyntax::MArgType TYPE, T DEFAULT>
@@ -42,6 +48,11 @@ private:
         const char *FLAG, *SHORT;
     };
 
+    enum class ClipType { INTERNAL, BOOLEAN };
+
     inline static Flag num_fragments = Flag<unsigned, MSyntax::kUnsigned, 5u>("-num_fragments", "-nf");
     inline static Flag delete_object = Flag<bool, MSyntax::kBoolean, true>("-delete_object", "-do");
+
+    MDagModifier dag_modifier;
+    static const ClipType CLIP_TYPE = ClipType::BOOLEAN;
 };

@@ -16,6 +16,8 @@ std::vector<MPoint> generateUniformPoints(const MPoint& min, const MPoint& max, 
 
 Plane getBisectorPlane(const MPoint& p0, const MPoint& p1);
 
+MVector orthogonalUnitVector(const MVector& v);
+
 // From https://stackoverflow.com/a/26221725
 template<typename ... Args>
 MString formatString(const std::string& format, Args ... args)
