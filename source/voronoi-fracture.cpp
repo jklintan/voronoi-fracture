@@ -25,13 +25,10 @@ VoronoiFracture::~VoronoiFracture() {};
 
 MStatus VoronoiFracture::doIt(const MArgList& args)
 {
-    MArgDatabase arg_data(syntaxCreator(), args);
+    MArgDatabase arg_data(syntax(), args);
 
-    unsigned int num_fragments = 5;
-    if (arg_data.isFlagSet("-num_fragments"))
-    {
-        arg_data.getFlagArgument("-num_fragments", 0, num_fragments);
-    }
+    num_fragments.setValue(arg_data);
+    delete_object.setValue(arg_data);
 
     MSelectionList list;
     MGlobal::getActiveSelectionList(list);
@@ -48,7 +45,15 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     it.getDagPath(node);
 
     MFnDagNode node_fn(node);
-    displayInfo(MString("Fracturing ") + node_fn.name());
+    displayInfo(MString("Fracturing ") + node_fn.fullPathName());
+
+    MFnDagNode fragment_group;
+    MStatus status = generateFragmentMeshes(node_fn.fullPathName().asChar(), num_fragments, fragment_group);
+    if (!status)
+    {
+        displayError("Unable to duplicate selected mesh.");
+        return status;
+    }
 
     MObject mesh = node_fn.object();
 
@@ -60,18 +65,9 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     MBoundingBox BB = node_fn.boundingBox();
     std::vector<MPoint> points = generateUniformPoints(BB.min() * transformation_matrix, BB.max() * transformation_matrix, num_fragments);
 
-    MDagModifier dag_modifier;
+    std::vector<MObject> clipped;
 
-    // Create group/transform to store fragments under
-    MObject fragment_group = dag_modifier.createNode("transform");
-    dag_modifier.renameNode(fragment_group, "fragment_group");
-    dag_modifier.doIt();
-
-    // Copy transform from original mesh
-    MFnTransform(fragment_group).set(transformation_matrix);
-
-    MStatus status;
-    for (size_t i = 0; i < points.size(); i++)
+    for (unsigned int i = 0; i < points.size(); i++)
     {
         const MPoint& p0 = points[i];
 
@@ -81,18 +77,10 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             std::to_string(p0.z)).c_str()
         );
 
-        std::string fragment_name = ("fragment_" + std::to_string(i)).c_str();
-
-        MObject fragment_transform = dag_modifier.createNode("transform", fragment_group, &status);
-        dag_modifier.renameNode(fragment_transform, fragment_name.c_str());
-        dag_modifier.doIt();
-
-        // Duplicate mesh
-        MFnMesh fragment;
-        fragment.copy(mesh, fragment_transform, &status);
+        MFnMesh fragment(MFnDagNode(fragment_group.child(i)).child(0), &status);
         if (!status)
         {
-            displayError("Could not duplicate selected mesh.");
+            displayError("Could not retrieve fragment mesh.");
             return status;
         }
 
@@ -102,26 +90,42 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
             Plane clip_plane = getBisectorPlane(p0, points[j]);
 
-            status = clipAndCapMEL(fragment_name, clip_plane);
+            status = internalClipAndCap(fragment.fullPathName().asChar(), clip_plane);
 
             if (!status)
             {
-                displayError("Could not execute MEL clip and cap command.");
+                displayError("Could not execute clip and cap command.");
                 return status;
             }
 
             // Object was completely clipped
             if (fragment.numPolygons() < 3)
             {
-                dag_modifier.deleteNode(fragment_transform);
-                dag_modifier.doIt();
+                clipped.push_back(fragment_group.child(i));
                 break;
             }
         }
     }
-    
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - begin).count();
-    displayInfo(("Fracture time: " + std::to_string(duration * 1e-6) + " seconds.").c_str());
+
+    MDagModifier dag_modifier;
+
+    // Delete original objects
+    if (delete_object) dag_modifier.deleteNode(node_fn.parent(0));
+
+    // Delete clipped fragments
+    for (auto& o : clipped) dag_modifier.deleteNode(o);
+
+    dag_modifier.doIt();
+
+    // Rename fragments
+    for (unsigned int i = 0; i < fragment_group.childCount(); i++)
+    {
+        MFnDagNode transform_node_fn(fragment_group.child(i));
+        MString new_name = transform_node_fn.setName(("fragment_" + std::to_string(i)).c_str());
+    }
+
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - begin);
+    displayInfo(("Fracture time: " + std::to_string(duration.count() * 1e-6) + " seconds.").c_str());
 
     return MS::kSuccess;
 }
@@ -134,35 +138,45 @@ void* VoronoiFracture::creator()
 MSyntax VoronoiFracture::syntaxCreator()
 {
     MSyntax syntax;
-    syntax.addFlag("-n", "-num_fragments", MSyntax::kUnsigned);
+    num_fragments.addToSyntax(syntax);
+    delete_object.addToSyntax(syntax);
     return syntax;
 }
 
-MStatus VoronoiFracture::clipAndCapMEL(const std::string& object_name, const Plane& clip_plane)
+// Mesh clip and cap using internal commands polyCut and polyCloseBorder
+MStatus VoronoiFracture::internalClipAndCap(const char* object, const Plane& clip_plane)
 {
     const MVector& n = clip_plane.normal;
     const MVector& p = clip_plane.point;
 
-    auto format = [&](char* buffer, size_t size) 
-    { 
-        return std::snprintf(buffer, size, R"mel(
-        {
-            select %s;
-            float $angles[3] = `angleBetween -euler -v1 0 0 1 -v2 %f %f %f`;
-            polyCut -deleteFaces on -cutPlaneCenter %f %f %f -cutPlaneRotate $angles[0] $angles[1] $angles[2];
-                
-            int $faces[] = `polyEvaluate -face`;
-            if($faces[0] > 2)
-            {
-                polyCloseBorder;
-            }
-        }
-        )mel", object_name.c_str(), -n.x, -n.y, -n.z, p.x, p.y, p.z);
-    };
+    return MGlobal::executePythonCommand(formatString(
+        "Util.clipAndCap('%s', [%f,%f,%f], [%f,%f,%f])", 
+        object, -n.x, -n.y, -n.z, p.x, p.y, p.z
+    ));
+}
 
-    int size = format(nullptr, 0) + 1;
-    std::unique_ptr<char[]> command(new char[size]);
-    format(command.get(), size);
+MStatus VoronoiFracture::generateFragmentMeshes(const char* object, size_t num, MFnDagNode& parent)
+{
+    MString group_name;
+    MStatus status = MGlobal::executePythonCommand(formatString(
+        "Util.multiDuplicate('%s', %d, 'fragments')", object, num), group_name
+    );
 
-    return MGlobal::executeCommand(command.get());
+    if (!status) return status;
+
+    MSelectionList group_list;
+    status = group_list.add(group_name);
+
+    MItSelectionList group_it(group_list, MFn::kTransform);
+
+    if (group_it.isDone()) return MS::kFailure;
+
+    MObject group;
+    group_it.getDependNode(group);
+
+    parent.setObject(group);
+
+    if (parent.childCount() != num) return MS::kFailure;
+
+    return MS::kSuccess;
 }
