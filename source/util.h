@@ -15,3 +15,13 @@ struct Plane
 std::vector<MPoint> generateUniformPoints(const MPoint& min, const MPoint& max, size_t num);
 
 Plane getBisectorPlane(const MPoint& p0, const MPoint& p1);
+
+// From https://stackoverflow.com/a/26221725
+template<typename ... Args>
+MString formatString(const std::string& format, Args ... args)
+{
+    int size = snprintf(nullptr, 0, format.c_str(), args ...) + 1;
+    std::unique_ptr<char[]> buf(new char[size]);
+    snprintf(buf.get(), size, format.c_str(), args ...);
+    return buf.get();
+}

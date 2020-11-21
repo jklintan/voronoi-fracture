@@ -7,6 +7,7 @@
 #include "scripts/uninitializeUI.py"
 #include "scripts/UI/menu.py"
 #include "scripts/UI/createFractureUI.py"
+#include "scripts/utilities.py"
 
 #include "voronoi-fracture.h"
 
@@ -25,6 +26,10 @@ MStatus initializePlugin(MObject obj)
     status = MGlobal::executePythonCommand(
         (std::string(menu) + createFractureUI + initialize_UI).c_str()
     );
+
+    if (!status) return status;
+
+    status = MGlobal::executePythonCommand(py_utilities);
 
     return status;
 }
