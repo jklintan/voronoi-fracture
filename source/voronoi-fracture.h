@@ -26,6 +26,8 @@ private:
 
     MStatus generateFragmentMeshes(const char* object, size_t num, MFnDagNode& parent);
 
+    std::vector<MPoint> generateSeedPoints(const MBoundingBox &BB, const MMatrix &M, const MSelectionList& list);
+
     template<class T, MSyntax::MArgType TYPE, T DEFAULT>
     struct Flag
     {
@@ -54,7 +56,7 @@ private:
     inline static Flag delete_object = Flag<bool, MSyntax::kBoolean, true>("-delete_object", "-do");
 
     MDagModifier dag_modifier;
-    static const ClipType CLIP_TYPE = ClipType::BOOLEAN;
+    static const ClipType CLIP_TYPE = ClipType::INTERNAL;
 
     std::unique_ptr<MFnMesh> clipping_mesh;
 };

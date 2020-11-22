@@ -18,7 +18,9 @@
 #include <maya/MPointArray.h>
 #include <maya/MIntArray.h>
 #include <maya/MObjectArray.h>
+#include <maya/MFnNurbsSurface.h>
 
+#include "point-distribution.h"
 #include "util.h"
 
 VoronoiFracture::VoronoiFracture() {};
@@ -57,8 +59,6 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
         return status;
     }
 
-    auto begin = std::chrono::high_resolution_clock::now();
-
     // Transformation matrix
     MMatrix M = node.inclusiveMatrix();
 
@@ -68,11 +68,9 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     MVector extent = BB.max() - BB.min();
     double clip_triangle_half_extent = extent.length() * 10.0;
 
-    std::vector<MPoint> points;
-    if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
-        points = generateUniformPoints(BB.min(), BB.max(), num_fragments);
-    else
-        points = generateUniformPoints(BB.min() * M, BB.max() * M, num_fragments);
+    std::vector<MPoint> points = generateSeedPoints(BB, M, list);
+
+    auto begin = std::chrono::high_resolution_clock::now();
 
     std::vector<MObject> clipped;
 
@@ -99,7 +97,17 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
             Plane clip_plane = getBisectorPlane(p0, points[j]);
 
-            if (!clip_plane.isClipped(fragment)) continue;
+            // TODO: Fix object vs world space for clip methods
+            bool is_clipped;
+            if (!clip_plane.intersects(fragment, is_clipped))
+            {
+                if (is_clipped)
+                {
+                    clipped.push_back(fragment_group.child(i));
+                    break;
+                }
+                continue;
+            }
 
             if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
                 status = booleanClipAndCap(fragment, clip_plane, clip_triangle_half_extent);
@@ -110,13 +118,6 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             {
                 displayError("Could not execute clip and cap.");
                 return status;
-            }
-
-            // Object was completely clipped
-            if (fragment.numPolygons() < 4)
-            {
-                clipped.push_back(fragment_group.child(i));
-                break;
             }
         }
     }
@@ -242,4 +243,43 @@ MStatus VoronoiFracture::generateFragmentMeshes(const char* object, size_t num, 
     if (parent.childCount() != num) return MS::kFailure;
 
     return MS::kSuccess;
+}
+
+std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, const MMatrix& M, const MSelectionList& list)
+{
+    std::vector<MPoint> points;
+
+    MItSelectionList it(list, MFn::kNurbsSurface);
+    if (!it.isDone())
+    {
+        MDagPath node;
+        it.getDagPath(node);
+        MFnDagNode node_fn(node);
+
+        displayInfo(MString("Using ") + node_fn.fullPathName());
+
+        MFnTransform transform(node_fn.parent(0));
+        auto matrix = node.inclusiveMatrix();
+
+        MBoundingBox nurb_BB = node_fn.boundingBox();
+
+        MPoint position = MPoint(0, 0, 0, 1.0) * matrix;
+        MPoint extent = nurb_BB.max() - nurb_BB.min();
+        double max_extent = std::max(extent.x, std::max(extent.y, extent.z));
+        double radius = max_extent * 0.5;
+
+        if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
+            points = PointDistribution::radialQuadratic(position * M.inverse(), radius, num_fragments);
+        else
+            points = PointDistribution::radialQuadratic(position, radius, num_fragments);
+    }
+    else
+    {
+        if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
+            points = PointDistribution::uniformBoundingBox(BB.min(), BB.max(), num_fragments);
+        else
+            points = PointDistribution::uniformBoundingBox(BB.min() * M, BB.max() * M, num_fragments);
+    }
+
+    return points;
 }
