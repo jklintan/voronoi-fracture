@@ -57,8 +57,6 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
         return status;
     }
 
-    MObject mesh = node_fn.object();
-
     auto begin = std::chrono::high_resolution_clock::now();
 
     // Transformation matrix
@@ -68,7 +66,7 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     MBoundingBox BB = node_fn.boundingBox();
 
     MVector extent = BB.max() - BB.min();
-    double clip_triangle_half_extent = extent.length() * 100.0;
+    double clip_triangle_half_extent = extent.length() * 10.0;
 
     std::vector<MPoint> points;
     if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
@@ -101,6 +99,8 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
             Plane clip_plane = getBisectorPlane(p0, points[j]);
 
+            if (!clip_plane.isClipped(fragment)) continue;
+
             if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
                 status = booleanClipAndCap(fragment, clip_plane, clip_triangle_half_extent);
             else
@@ -113,12 +113,18 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             }
 
             // Object was completely clipped
-            if (fragment.numPolygons() < 3)
+            if (fragment.numPolygons() < 4)
             {
                 clipped.push_back(fragment_group.child(i));
                 break;
             }
         }
+    }
+
+    if (clipping_mesh)
+    {
+        dag_modifier.deleteNode(clipping_mesh->object());
+        clipping_mesh.reset();
     }
 
     // Delete original objects
@@ -170,42 +176,46 @@ MStatus VoronoiFracture::internalClipAndCap(const char* object, const Plane& cli
 // Mesh clip and cap using boolean intersection from C++ api
 MStatus VoronoiFracture::booleanClipAndCap(MFnMesh& object, const Plane& clip_plane, double half_extent)
 {
-    // Generate arbitrary orthonormal basis for plane. X and Y span the plane.
+    // Legacy mode using triangle plane is way faster (19 sec for 1000 fragments), but 
+    // this produces artefacts in edge cases. Non-legacy is more robust but requires 
+    // an intersection volume instead, for which a tetrahedra is generated.
+    constexpr bool LEGACY = false;
+
+    if (!clipping_mesh)
+    {
+        clipping_mesh = std::make_unique<MFnMesh>();
+
+        if constexpr (LEGACY)
+        {
+            constexpr int indices[] = { 0, 1, 2 };
+            (void)clipping_mesh->create(3, 1, MPointArray(3), MIntArray(1, 3), MIntArray(indices, 3));
+        }
+        else
+        {
+            constexpr int indices[] = { 0, 1, 2, /**/ 0, 3, 1, /**/ 0, 2, 3, /**/ 1, 3, 2 };
+            (void)clipping_mesh->create(4, 4, MPointArray(4), MIntArray(4, 3), MIntArray(indices, 12));
+        }
+    }
+
+    // Generate arbitrary orthonormal basis for plane, (X, Y, clip_plane.normal).
     MVector X = orthogonalUnitVector(clip_plane.normal);
     MVector Y = clip_plane.normal ^ X;
 
     const auto& p = clip_plane.point;
 
-    MPoint vertices[] = {
-        p + Y * half_extent,
-        p - X * half_extent - Y * half_extent,
-        p + X * half_extent - Y * half_extent
-    };
-
-    constexpr int indices[] = { 0, 1, 2 };
-
-    MStatus status;
-
-    // Create triangle polygon clipping plane
-    MFnMesh triangle_plane;
-    (void)triangle_plane.create(3, 1, MPointArray(vertices, 3), MIntArray(1, 3), MIntArray(indices, 3), MObject::kNullObj, &status);
-
-    if (!status)
+    for (int i = 0; i < 3; i++)
     {
-        displayError(status.errorString());
-        return status;
+        double a = i * 2.0 * M_PI / 3.0;
+        clipping_mesh->setPoint(i, p + X * half_extent * std::cos(a) + Y * half_extent * std::sin(a));
     }
+
+    if constexpr (!LEGACY) clipping_mesh->setPoint(3, p - clip_plane.normal * half_extent);
 
     MObjectArray objects;
     objects.append(object.object());
-    objects.append(triangle_plane.object());
+    objects.append(clipping_mesh->object());
 
-    status = object.booleanOps(MFnMesh::kIntersection, objects, true);
-
-    dag_modifier.deleteNode(triangle_plane.object());
-    dag_modifier.doIt();
-
-    return status;
+    return object.booleanOps(MFnMesh::kIntersection, objects, LEGACY);
 }
 
 MStatus VoronoiFracture::generateFragmentMeshes(const char* object, size_t num, MFnDagNode& parent)

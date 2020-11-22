@@ -2,10 +2,22 @@
 
 #include <random>
 #include <maya/MPoint.h>
+#include <maya/MFnMesh.h>
+#include <maya/MItMeshVertex.h>
 
-double Plane::signedDistance(const MVector& x)
+double Plane::signedDistance(const MVector& x) const
 {
     return normal * (x - point);
+}
+
+bool Plane::isClipped(const MFnMesh& mesh, double epsilon) const
+{
+    auto obj = mesh.object();
+    for (MItMeshVertex it(obj); !it.isDone(); it.next())
+    {
+        if (signedDistance(it.position()) > epsilon) return true;
+    }
+    return false;
 }
 
 std::vector<MPoint> generateUniformPoints(const MPoint& min, const MPoint& max, size_t num)

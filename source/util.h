@@ -7,9 +7,10 @@ struct Plane
 {
     Plane(const MVector& n, const MVector& p) : normal(n.normal()), point(p) { }
 
-    double signedDistance(const MVector& x);
+    double signedDistance(const MVector& x) const;
+    bool isClipped(const MFnMesh& mesh, double epsilon = 1e-5) const;
 
-    const MVector normal, point;
+    MVector normal, point;
 };
 
 std::vector<MPoint> generateUniformPoints(const MPoint& min, const MPoint& max, size_t num);

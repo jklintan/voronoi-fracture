@@ -55,4 +55,6 @@ private:
 
     MDagModifier dag_modifier;
     static const ClipType CLIP_TYPE = ClipType::BOOLEAN;
+
+    std::unique_ptr<MFnMesh> clipping_mesh;
 };
