@@ -4,6 +4,7 @@
 #include <maya/MPoint.h>
 #include <maya/MFnMesh.h>
 #include <maya/MItMeshVertex.h>
+#include <maya/MDagPath.h>
 
 double Plane::signedDistance(const MVector& x) const
 {
@@ -12,12 +13,12 @@ double Plane::signedDistance(const MVector& x) const
 
 bool Plane::intersects(const MFnMesh& mesh, bool& strictly_greater) const
 {
-    auto obj = mesh.object();
     bool greater = false, less = false;
     strictly_greater = false;
-    for (MItMeshVertex it(obj); !it.isDone(); it.next())
+    for (MItMeshVertex it(mesh.dagPath()); !it.isDone(); it.next())
     {
-        if (signedDistance(it.position()) > 0.0)
+        MStatus status;
+        if (signedDistance(it.position(MSpace::kWorld)) > 0.0)
             greater = true;
         else
             less = true;

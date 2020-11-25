@@ -1,6 +1,7 @@
 #include "voronoi-fracture.h"
 
 #include <chrono>
+#include <array>
 
 #include <maya/MGlobal.h>
 #include <maya/MDagPath.h>
@@ -19,6 +20,9 @@
 #include <maya/MIntArray.h>
 #include <maya/MObjectArray.h>
 #include <maya/MFnNurbsSurface.h>
+#include <maya/MFnNurbsCurve.h>
+#include <maya/MDagPathArray.h>
+#include <maya/MPlug.h>
 
 #include "point-distribution.h"
 #include "util.h"
@@ -33,6 +37,10 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
 
     num_fragments.setValue(arg_data);
     delete_object.setValue(arg_data);
+    curve_radius.setValue(arg_data);
+    disk_axis.setValue(arg_data);
+    disk_steps.setValue(arg_data);
+    step_noise.setValue(arg_data);
 
     MSelectionList list;
     MGlobal::getActiveSelectionList(list);
@@ -51,24 +59,29 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     MFnDagNode node_fn(node);
     displayInfo(MString("Fracturing ") + node_fn.fullPathName());
 
-    MFnDagNode fragment_group;
-    MStatus status = generateFragmentMeshes(node_fn.fullPathName().asChar(), num_fragments, fragment_group);
+    // Transformation matrix
+    MMatrix M = node.inclusiveMatrix();
+    MMatrix M_inv = M.inverse();
+
+    MBoundingBox BB = node_fn.boundingBox();
+    BB.transformUsing(M);
+
+    MVector extent = BB.max() - BB.min();
+    double clip_triangle_half_extent = extent.length() * 10.0;
+
+    const std::vector<MPoint> points = generateSeedPoints(BB, list);
+
+    // Vector of pointers to seed points used for separate sorting
+    std::vector<std::vector<MPoint>::const_iterator> point_ptrs(points.size());
+    std::generate(point_ptrs.begin(), point_ptrs.end(), [b = points.begin()]() mutable { return b++; });
+
+    MDagPathArray fragment_paths;
+    MStatus status = generateFragmentMeshes(node_fn.fullPathName().asChar(), points.size(), fragment_paths);
     if (!status)
     {
         displayError("Unable to duplicate selected mesh.");
         return status;
     }
-
-    // Transformation matrix
-    MMatrix M = node.inclusiveMatrix();
-
-    // Generate uniform points in bounding box of mesh
-    MBoundingBox BB = node_fn.boundingBox();
-
-    MVector extent = BB.max() - BB.min();
-    double clip_triangle_half_extent = extent.length() * 10.0;
-
-    std::vector<MPoint> points = generateSeedPoints(BB, M, list);
 
     auto begin = std::chrono::high_resolution_clock::now();
 
@@ -84,35 +97,53 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             std::to_string(p0.z)).c_str()
         );
 
-        MFnMesh fragment(MFnDagNode(fragment_group.child(i)).child(0), &status);
+        auto fragment_path = fragment_paths[i];
+        fragment_path.extendToShape();
+        MFnMesh fragment(fragment_path, &status);
         if (!status)
         {
-            displayError("Could not retrieve fragment mesh.");
+            displayError("Could not retrieve fragment mesh. " + status.errorString());
             return status;
         }
 
-        for (size_t j = 0; j < points.size(); j++)
+        // Sort point pointers based on distance to p0
+        std::sort(point_ptrs.begin(), point_ptrs.end(),
+            [&p0](const auto& a, const auto& b)
+            {
+                return p0.distanceTo(*a) < p0.distanceTo(*b);
+            }
+        );
+
+        const auto& p0_ptr = points.begin() + i;
+
+        for (const auto &p1_ptr : point_ptrs)
         {
-            if (j == i) continue;
+            if (p0_ptr == p1_ptr) continue;
 
-            Plane clip_plane = getBisectorPlane(p0, points[j]);
+            Plane clip_plane = getBisectorPlane(p0, *p1_ptr);
 
-            // TODO: Fix object vs world space for clip methods
+            // This in combination with sorting improves performance a lot
             bool is_clipped;
             if (!clip_plane.intersects(fragment, is_clipped))
             {
                 if (is_clipped)
                 {
-                    clipped.push_back(fragment_group.child(i));
+                    clipped.push_back(fragment_paths[i].transform());
                     break;
                 }
                 continue;
             }
 
             if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
+            {
+                // MFnMesh::booleanOps operates in object space
+                clip_plane = getBisectorPlane(p0 * M_inv, *p1_ptr * M_inv);
                 status = booleanClipAndCap(fragment, clip_plane, clip_triangle_half_extent);
+            }
             else
+            {
                 status = internalClipAndCap(fragment.fullPathName().asChar(), clip_plane);
+            }
 
             if (!status)
             {
@@ -129,7 +160,7 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     }
 
     // Delete original objects
-    if (delete_object) dag_modifier.deleteNode(node_fn.parent(0));
+    if (delete_object) dag_modifier.deleteNode(node.transform());
 
     // Delete clipped fragments
     for (auto& o : clipped) dag_modifier.deleteNode(o);
@@ -137,9 +168,9 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     dag_modifier.doIt();
 
     // Rename fragments
-    for (unsigned int i = 0; i < fragment_group.childCount(); i++)
+    for (unsigned int i = 0; i < fragment_paths.length(); i++)
     {
-        MFnDagNode transform_node_fn(fragment_group.child(i));
+        MFnDagNode transform_node_fn(fragment_paths[i].transform());
         MString new_name = transform_node_fn.setName(("fragment_" + std::to_string(i)).c_str());
     }
 
@@ -159,6 +190,10 @@ MSyntax VoronoiFracture::syntaxCreator()
     MSyntax syntax;
     num_fragments.addToSyntax(syntax);
     delete_object.addToSyntax(syntax);
+    curve_radius.addToSyntax(syntax);
+    disk_axis.addToSyntax(syntax);
+    disk_steps.addToSyntax(syntax);
+    step_noise.addToSyntax(syntax);
     return syntax;
 }
 
@@ -219,7 +254,7 @@ MStatus VoronoiFracture::booleanClipAndCap(MFnMesh& object, const Plane& clip_pl
     return object.booleanOps(MFnMesh::kIntersection, objects, LEGACY);
 }
 
-MStatus VoronoiFracture::generateFragmentMeshes(const char* object, size_t num, MFnDagNode& parent)
+MStatus VoronoiFracture::generateFragmentMeshes(const char* object, size_t num, MDagPathArray& fragment_paths)
 {
     MString group_name;
     MStatus status = MGlobal::executePythonCommand(formatString(
@@ -236,49 +271,73 @@ MStatus VoronoiFracture::generateFragmentMeshes(const char* object, size_t num, 
     if (group_it.isDone()) return MS::kFailure;
 
     MObject group;
-    group_it.getDependNode(group);
+    MDagPath node;
+    group_it.getDagPath(node);
+    node.getAllPathsBelow(fragment_paths);
 
-    parent.setObject(group);
-
-    if (parent.childCount() != num) return MS::kFailure;
+    if (fragment_paths.length() != num) return MS::kFailure;
 
     return MS::kSuccess;
 }
 
-std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, const MMatrix& M, const MSelectionList& list)
+std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, const MSelectionList& list)
 {
     std::vector<MPoint> points;
 
-    MItSelectionList it(list, MFn::kNurbsSurface);
-    if (!it.isDone())
+    MItSelectionList sphere_it(list, MFn::kImplicitSphere);
+    MItSelectionList curve_it(list, MFn::kNurbsCurve);
+
+    if (!sphere_it.isDone())
+    {
+        // createNode implicitSphere
+        MDagPath node;
+        sphere_it.getDagPath(node);
+        MFnDagNode node_fn(node);
+        MPlug radius_plug = node_fn.findPlug("radius", true);
+
+        double radius = radius_plug.asDouble();
+        MMatrix M = node.inclusiveMatrix();
+        MPoint position = MPoint(0, 0, 0, 1.0) * M;
+
+        unsigned disk_axis_i = 0;
+        if ((MString)disk_axis == "x") disk_axis_i = 1;
+        else if ((MString)disk_axis == "y") disk_axis_i = 2;
+        else if ((MString)disk_axis == "z") disk_axis_i = 3;
+
+
+        std::array<MVector, 3> axes = {
+            MVector(radius, 0, 0) * M - position,
+            MVector(0, radius, 0) * M - position,
+            MVector(0, 0, radius) * M - position
+        };
+
+        if (disk_axis_i == 0)
+        {
+            points = PointDistribution::radialQuadratic(position, axes, num_fragments);
+        }
+        else
+        {
+            if ((unsigned)disk_steps == 0)
+                points = PointDistribution::diskQuadratic(position, axes, disk_axis_i, num_fragments);
+            else
+                points = PointDistribution::diskSteps(position, axes, disk_steps, disk_axis_i, step_noise, num_fragments);
+        }
+    }
+    else if (!curve_it.isDone())
     {
         MDagPath node;
-        it.getDagPath(node);
+        curve_it.getDagPath(node);
         MFnDagNode node_fn(node);
 
         displayInfo(MString("Using ") + node_fn.fullPathName());
 
-        MFnTransform transform(node_fn.parent(0));
-        auto matrix = node.inclusiveMatrix();
+        MFnNurbsCurve curve(node);
 
-        MBoundingBox nurb_BB = node_fn.boundingBox();
-
-        MPoint position = MPoint(0, 0, 0, 1.0) * matrix;
-        MPoint extent = nurb_BB.max() - nurb_BB.min();
-        double max_extent = std::max(extent.x, std::max(extent.y, extent.z));
-        double radius = max_extent * 0.5;
-
-        if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
-            points = PointDistribution::radialQuadratic(position * M.inverse(), radius, num_fragments);
-        else
-            points = PointDistribution::radialQuadratic(position, radius, num_fragments);
+        points = PointDistribution::curve(curve, curve_radius, num_fragments);
     }
     else
     {
-        if constexpr (CLIP_TYPE == ClipType::BOOLEAN)
-            points = PointDistribution::uniformBoundingBox(BB.min(), BB.max(), num_fragments);
-        else
-            points = PointDistribution::uniformBoundingBox(BB.min() * M, BB.max() * M, num_fragments);
+        points = PointDistribution::uniformBoundingBox(BB.min(), BB.max(), num_fragments);
     }
 
     return points;

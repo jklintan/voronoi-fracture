@@ -24,14 +24,16 @@ private:
     MStatus internalClipAndCap(const char* object, const Plane& clip_plane);
     MStatus booleanClipAndCap(MFnMesh& object, const Plane& clip_plane, double half_extent);
 
-    MStatus generateFragmentMeshes(const char* object, size_t num, MFnDagNode& parent);
+    MStatus generateFragmentMeshes(const char* object, size_t num, MDagPathArray& fragment_paths);
 
-    std::vector<MPoint> generateSeedPoints(const MBoundingBox &BB, const MMatrix &M, const MSelectionList& list);
+    // Generates seed points in world space
+    std::vector<MPoint> generateSeedPoints(const MBoundingBox &BB, const MSelectionList& list);
 
-    template<class T, MSyntax::MArgType TYPE, T DEFAULT>
+    template<class T, MSyntax::MArgType TYPE>
     struct Flag
     {
-        Flag(const char* flag, const char* s_flag) : FLAG(flag), SHORT(s_flag) { }
+        Flag(const char* flag, const char* s_flag, T d) 
+            : FLAG(flag), SHORT(s_flag), DEFAULT(d), value(d) { }
 
         operator T() const { return value; }
 
@@ -46,17 +48,23 @@ private:
         }
 
     private:
-        T value = DEFAULT;
+        T value;
+        const T DEFAULT;
         const char *FLAG, *SHORT;
     };
 
     enum class ClipType { INTERNAL, BOOLEAN };
 
-    inline static Flag num_fragments = Flag<unsigned, MSyntax::kUnsigned, 5u>("-num_fragments", "-nf");
-    inline static Flag delete_object = Flag<bool, MSyntax::kBoolean, true>("-delete_object", "-do");
+    static const ClipType CLIP_TYPE = ClipType::INTERNAL;
+
+    inline static Flag num_fragments = Flag<unsigned, MSyntax::kUnsigned>("-num_fragments", "-nf", 5u);
+    inline static Flag delete_object = Flag<bool, MSyntax::kBoolean>("-delete_object", "-do", true);
+    inline static Flag curve_radius  = Flag<double, MSyntax::kDouble>("-curve_radius", "-cr", 0.1);
+    inline static Flag disk_axis = Flag<MString, MSyntax::kString>("-disk_axis", "-da", "");
+    inline static Flag disk_steps    = Flag<unsigned, MSyntax::kUnsigned>("-disk_steps", "-ds", 0);
+    inline static Flag step_noise    = Flag<double, MSyntax::kDouble>("-step_noise", "-sn", 0.05);
 
     MDagModifier dag_modifier;
-    static const ClipType CLIP_TYPE = ClipType::INTERNAL;
 
     std::unique_ptr<MFnMesh> clipping_mesh;
 };
