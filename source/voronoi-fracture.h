@@ -21,7 +21,7 @@ public:
     static MSyntax syntaxCreator();
 
 private:
-    MStatus internalClipAndCap(const char* object, const Plane& clip_plane);
+    MStatus internalClipAndCap(MFnMesh& object, const Plane& clip_plane);
     MStatus booleanClipAndCap(MFnMesh& object, const Plane& clip_plane, double half_extent);
 
     MStatus generateFragmentMeshes(const char* object, size_t num, MDagPathArray& fragment_paths);
@@ -36,6 +36,8 @@ private:
             : FLAG(flag), SHORT(s_flag), DEFAULT(d), value(d) { }
 
         operator T() const { return value; }
+
+        void operator=(const T& v) { value = v; }
 
         void addToSyntax(MSyntax& s) const { s.addFlag(SHORT, FLAG, TYPE); }
 
@@ -60,9 +62,10 @@ private:
     inline static Flag num_fragments = Flag<unsigned, MSyntax::kUnsigned>("-num_fragments", "-nf", 5u);
     inline static Flag delete_object = Flag<bool, MSyntax::kBoolean>("-delete_object", "-do", true);
     inline static Flag curve_radius  = Flag<double, MSyntax::kDouble>("-curve_radius", "-cr", 0.1);
-    inline static Flag disk_axis = Flag<MString, MSyntax::kString>("-disk_axis", "-da", "");
-    inline static Flag disk_steps    = Flag<unsigned, MSyntax::kUnsigned>("-disk_steps", "-ds", 0);
+    inline static Flag disk_axis     = Flag<MString, MSyntax::kString>("-disk_axis", "-da", "");
+    inline static Flag steps         = Flag<unsigned, MSyntax::kUnsigned>("-steps", "-s", 0);
     inline static Flag step_noise    = Flag<double, MSyntax::kDouble>("-step_noise", "-sn", 0.05);
+    inline static Flag min_distance  = Flag<double, MSyntax::kDouble>("-min_distance", "-md", 1e-2);
 
     MDagModifier dag_modifier;
 

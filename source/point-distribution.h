@@ -9,13 +9,19 @@ namespace PointDistribution
 {
     std::vector<MPoint> uniformBoundingBox(const MPoint& min, const MPoint& max, size_t num);
 
-    std::vector<MPoint> radialQuadratic(const MPoint& position, const std::array<MVector, 3>& axes, size_t num);
+    std::vector<MPoint> sphereQuadratic(const MPoint& position, const std::array<MVector, 3>& axes, size_t num);
 
     std::vector<MPoint> diskQuadratic(const MPoint& position, const std::array<MVector, 3>& axes, size_t axis, size_t num);
+
+    std::vector<MPoint> sphereSteps(const MPoint& position, const std::array<MVector, 3>& axes, size_t steps, double noise_sigma, size_t num);
 
     std::vector<MPoint> diskSteps(const MPoint& position, const std::array<MVector, 3>& axes, size_t steps, size_t axis, double noise_sigma, size_t num);
 
     std::vector<MPoint> curve(const MFnNurbsCurve &curve, double radius, size_t num);
+
+    std::vector<MPoint> particles(const MFnParticleSystem& particles);
+
+    std::vector<MPoint> removeDuplicates(const std::vector<MPoint>& points, double tolerance);
 
     // Random engine
     inline std::mt19937_64 engine = std::mt19937_64(std::random_device{}());

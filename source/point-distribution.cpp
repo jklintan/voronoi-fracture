@@ -5,6 +5,8 @@
 #include <maya/MFnNurbsCurve.h>
 #include <maya/MVector.h>
 #include <maya/MQuaternion.h>
+#include <maya/MFnParticleSystem.h>
+#include <maya/MVectorArray.h>
 #include "util.h"
 
 std::vector<MPoint> PointDistribution::uniformBoundingBox(const MPoint& min, const MPoint& max, size_t num)
@@ -21,7 +23,7 @@ std::vector<MPoint> PointDistribution::uniformBoundingBox(const MPoint& min, con
     return points;
 }
 
-std::vector<MPoint> PointDistribution::radialQuadratic(const MPoint& position, const std::array<MVector, 3> &axes, size_t num)
+std::vector<MPoint> PointDistribution::sphereQuadratic(const MPoint& position, const std::array<MVector, 3> &axes, size_t num)
 {
     std::vector<MPoint> points(num, position);
 
@@ -87,6 +89,42 @@ std::vector<MPoint> PointDistribution::diskSteps(const MPoint& position, const s
     return points;
 }
 
+#include <maya/MGlobal.h>
+std::vector<MPoint> PointDistribution::sphereSteps(const MPoint& position, const std::array<MVector, 3>& axes, size_t steps, double noise_sigma, size_t num)
+{
+    // num / steps = phi_steps * theta_steps = phi_steps * phi_steps * 0.5 <=>
+    double d_phi_steps = std::sqrt(2.0 * num / steps);
+    size_t phi_steps = (size_t)d_phi_steps;
+    size_t theta_steps = (size_t)(d_phi_steps * 0.5);
+
+    std::normal_distribution<double> noise(1, noise_sigma);
+
+    std::vector<MPoint> points(steps * phi_steps * theta_steps, position);
+
+    phi_steps++;
+    theta_steps++;
+
+    size_t p_idx = 0;
+    for (size_t step_idx = 1; step_idx <= steps; step_idx++)
+    {
+        double r = step_idx / (double)steps;
+        for (size_t phi_idx = 1; phi_idx < phi_steps; phi_idx++)
+        {
+            double phi = 2.0 * M_PI * (phi_idx / (double)phi_steps);
+            for (size_t theta_idx = 1; theta_idx < theta_steps; theta_idx++)
+            {
+                double theta = M_PI * (theta_idx / (double)theta_steps);
+                auto& p = points.at(p_idx++);
+                p += std::sin(theta) * std::cos(phi) * axes[0] * r * noise(engine);
+                p += std::sin(theta) * std::sin(phi) * axes[1] * r * noise(engine);
+                p += std::cos(theta) * axes[2] * r * noise(engine);
+            }
+        }
+    }
+
+    return points;
+}
+
 std::vector<MPoint> PointDistribution::curve(const MFnNurbsCurve& curve, double radius, size_t num)
 {
     std::uniform_real_distribution<double> length_dist(0.0, curve.length(1e-6));
@@ -111,4 +149,40 @@ std::vector<MPoint> PointDistribution::curve(const MFnNurbsCurve& curve, double 
     }
 
     return points;
+}
+
+std::vector<MPoint> PointDistribution::particles(const MFnParticleSystem& particles)
+{
+    MVectorArray positions;
+    particles.position(positions);
+
+    std::vector<MPoint> points(positions.length());
+
+    for (unsigned int i = 0; i < positions.length(); i++)
+    {
+        points[i] = positions[i];
+    }
+
+    return points;
+}
+
+std::vector<MPoint> PointDistribution::removeDuplicates(const std::vector<MPoint>& points, double tolerance)
+{
+    std::vector<MPoint> new_points;
+
+    for (const auto& p0 : points)
+    {
+        bool add = true;
+        for (const auto& p1 : new_points)
+        {
+            if (p0.distanceTo(p1) < tolerance)
+            {
+                add = false;
+                break;
+            }
+        }
+        if (add) new_points.push_back(p0);
+    }
+
+    return new_points;
 }
