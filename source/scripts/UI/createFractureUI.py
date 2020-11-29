@@ -6,6 +6,10 @@ import maya.cmds as mc
 from functools import partial
 
 NUM_FRAG_DEFAULT = 5
+CURVE_RADIUS_DEFAULT = 0.1
+DISK_AXIS_DEFAULT = ""
+DISK_STEPS_DEFAULT = 0
+STEP_NOISE_DEFAULT = 0.05
 
 def Diff(li1, li2):
     li_dif = [i for i in li1 + li2 if i not in li1 or i not in li2]
@@ -41,12 +45,36 @@ def AddMesh(*args):
     elif (str(args[0]) == 'Plane'):
         mc.polyPlane(sx=1, sy=1, h=5, w=5)
 
+def AddImplicit(*args):
+    existing = mc.ls('implicitSphere')
+    if(len(existing) > 0):
+        return 0
+    else:
+        mc.createNode('implicitSphere', n='implicitSphere')
+
+def OpenImportMenu(*args):
+    mc.Import()
+
+def UseCurve(*args):
+    # Select all non-locked transforms
+    selection = mc.ls(readOnly = False, type="mesh") 
+   
+    print(selection)
+    mc.select(selection)
+    if(len(selection) > 0):
+        mc.select(selection[0])
+        mc.EPCurveTool()
+
 class CreateFractureUI:
     def __init__(self, title, x, y):
         self.SIZE_X = x
         self.SIZE_Y = y
         self.WINDOW_TITLE = title
         self.NUM_FRAGMENTS = NUM_FRAG_DEFAULT
+        self.CURVE_RADIUS = CURVE_RADIUS_DEFAULT
+        self.DISK_AXIS = DISK_AXIS_DEFAULT
+        self.DISK_STEPS = DISK_STEPS_DEFAULT
+        self.STEP_NOISE = STEP_NOISE_DEFAULT
         self._removeOld()
         self._build()
 
@@ -54,7 +82,35 @@ class CreateFractureUI:
         setattr(self, prop, val)
 
     def _fracture(self,*args):
-        mc.voronoiFracture(num_fragments = self.NUM_FRAGMENTS)
+        selection = []
+        mc.select(selection)
+        existingMesh = mc.ls(type="mesh", readOnly = False)
+
+        if(len(existingMesh) > 0):
+            selection.append(existingMesh[0])
+            existingImplicit = mc.ls('implicitSphere')
+            if(len(existingImplicit) > 0):
+                if(self.DISK_AXIS != ""):
+                    selection.append(existingImplicit[0])
+
+        mc.select(selection) 
+        print(self.DISK_AXIS)
+        if(len(selection) > 0):
+            mc.voronoiFracture(num_fragments = self.NUM_FRAGMENTS, ds = self.DISK_STEPS, sn = self.STEP_NOISE, da = self.DISK_AXIS)
+        self.DISK_AXIS = ""
+
+    def _radioButtonUpdate(self, prop, button, val, *args):
+        activeButton = 1
+        if(val == True):
+            activeButton = button;
+        if(activeButton == 1):
+            setattr(self, prop, "")
+        elif(activeButton == 2):
+            setattr(self, prop, "x")
+        elif(activeButton == 3):
+            setattr(self, prop, "y")
+        elif(activeButton == 4):
+            setattr(self, prop, "z")
         
     def _removeOld(self):
         if mc.window("UI", exists=True):
@@ -65,55 +121,86 @@ class CreateFractureUI:
         
         ####### START UI ########
         mc.rowColumnLayout(numberOfRows=2)
-        mc.text("VORONOI FRACTURING", align='center', h=self.SIZE_Y*0.2, font="boldLabelFont", backgroundColor=[0.6, 0.8, 0.7])
+        mc.text("VORONOI FRACTURING", align='center', h=self.SIZE_Y*0.2, font="boldLabelFont", backgroundColor=[0.2, 0.2, 0.2])
       
         self.TABS = mc.tabLayout()
         
         ##### Fracture tab
         firstTab = mc.columnLayout()
         mc.tabLayout(self.TABS, edit=True, tabLabel=[firstTab, 'Fracturing'])
-        mc.separator(height=20)
 
         # Info text
+        mc.separator(height=20)
         mc.text(label=' Mark a mesh in the scene view or add a mesh in the menu below \n use the fracture button to break the object according to your properties', align='left')
         
+        # A slider designed to alter number of fragments     
+        mc.separator(height=20)
+        mc.separator( style='in', width=self.SIZE_X, height=20)
+
         # Multiple options menu
-        mc.separator(height=30)
-        mc.text(label=" Add a mesh to the scene")
+        mc.text(label=" Add objects to the scene", font='boldLabelFont')
         mc.separator(height=5)
-        meshOptionMenu = mc.optionMenu(w=self.SIZE_X*0.8, changeCommand=AddMesh)
+        meshOptionMenu = mc.optionMenu(w=self.SIZE_X, changeCommand=AddMesh)
         myMesh = mc.menuItem(label="***")
         myMesh = mc.menuItem(label="Sphere")
         myMesh = mc.menuItem(label="Cube")
         myMesh = mc.menuItem(label="Cylinder")
         myMesh = mc.menuItem(label="Torus")
         myMesh = mc.menuItem(label="Plane")
+        mc.separator(height=5)
+
+        # Add implicit and clear scene buttons
+        tmpRowWidth = [self.SIZE_X*0.33, self.SIZE_X*0.33, self.SIZE_X*0.33]
+        mc.rowLayout(numberOfColumns=3, columnWidth3=tmpRowWidth)
+        mc.button('Add implicit sphere', width=tmpRowWidth[0], command = AddImplicit)
+        mc.button('Use curves', width=tmpRowWidth[1], command = UseCurve)
+        mc.button('Load object', width=tmpRowWidth[2], command = OpenImportMenu)
+        mc.setParent('..')
+
+        # Property sliders
         mc.separator(height=10)
-        mc.button('Clear Scene', width=self.SIZE_X*0.2, command = Delete)
-        mc.separator(height=30)
-        
-        # A slider designed to alter number of fragments     
-        fragProp = mc.intSliderGrp(label=" Number of Fragments", value = NUM_FRAG_DEFAULT, min=2, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        mc.separator( style='in', width=self.SIZE_X, height=20)
+        mc.text(' Basic properties', font='boldLabelFont')
+        mc.separator(height=10)
+        fragProp = mc.intSliderGrp(label=" Number of Fragments", value = NUM_FRAG_DEFAULT, min=2, max=10000, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.intSliderGrp(fragProp, e=True, changeCommand = partial(self._applySlider, 'NUM_FRAGMENTS'))
+ 
+        mc.separator(height=10)
+        mc.separator( style='in', width=self.SIZE_X, height=20)
+        mc.text(' Advanced properties, require implicit node added to scene', font='boldLabelFont')
+        mc.separator(height=20)
         
-        # A slider designed to alter PROPERTY 1        
-        sliderProp1 = mc.floatSliderGrp(label=" Property 1", min=0, max=10, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
-        mc.floatSliderGrp(sliderProp1, e=True)
-        
-        # A slider designed to alter PROPERTY 2      
-        sliderProp2 = mc.floatSliderGrp(label=" Property 2", min=0, max=10, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
-        mc.floatSliderGrp(sliderProp2, e=True)
+        # A slider designed to alter curve radius
+        sliderProp1 = mc.floatSliderGrp(label=" Curve radius", min=0.01, max=1, value = CURVE_RADIUS_DEFAULT, field=True, step=0.01, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        mc.floatSliderGrp(sliderProp1, e=True, changeCommand = partial(self._applySlider, 'CURVE_RADIUS'))
+
+        # A slider designed to alter disk steps
+        sliderProp3 = mc.intSliderGrp(label=" Disk steps", value = DISK_STEPS_DEFAULT, min=0, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        mc.intSliderGrp(sliderProp3, e=True, changeCommand = partial(self._applySlider, 'DISK_STEPS'))
+
+        # A slider designed to alter step noise 
+        sliderProp4 = mc.floatSliderGrp(label=" Step noise", min=0, max=1, value = STEP_NOISE_DEFAULT, step=0.01, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        mc.floatSliderGrp(sliderProp4, e=True, changeCommand = partial(self._applySlider, 'STEP_NOISE'))
+
+        # Radio buttons for disk axis
+        mc.separator(height=5)
+        mc.radioButtonGrp(label=' Disk axis', select = 0, changeCommand1 = partial(self._radioButtonUpdate, 'DISK_AXIS', 1), changeCommand2= partial(self._radioButtonUpdate, 'DISK_AXIS', 2), changeCommand3 = partial(self._radioButtonUpdate, 'DISK_AXIS', 3), changeCommand4 = partial(self._radioButtonUpdate, 'DISK_AXIS', 4), labelArray4=['None', 'x', 'y', 'z'], width = self.SIZE_X, numberOfRadioButtons=4, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.15), (4, self.SIZE_X*0.15)])
 
         # Apply button
-        mc.separator(height=30)
-        mc.button('Fracture Mesh', l ='Fracture Mesh', width=self.SIZE_X, command = self._fracture)
+        mc.separator( style='in', width=self.SIZE_X, height=20)
+        tmpRowWidth = [self.SIZE_X*0.5, self.SIZE_X*0.5]
+        mc.rowLayout(numberOfColumns=2, columnWidth2=tmpRowWidth)
+        mc.button('Fracture Mesh', l ='Fracture Mesh', width=tmpRowWidth[0], command = self._fracture, backgroundColor=[0.1, 0.3, 0.1], height=40)
+        mc.button('Clear Scene', width=tmpRowWidth[1], command = Delete, backgroundColor=[0.3, 0.1, 0.1], height=40)
+        mc.setParent("..")
         mc.setParent("..")
         
         #### Add about us tab
         tmpRowWidth = [self.SIZE_X*0.5, self.SIZE_X*0.5]
         aboutTab = mc.columnLayout()
         mc.tabLayout(self.TABS, edit=True, tabLabel=[aboutTab, 'About us'])
-        
+       
+        mc.separator(height=20)
         mc.text("About", align='left', font="boldLabelFont")
         mc.separator(height=20)
         
@@ -136,6 +223,8 @@ class CreateFractureUI:
         mc.text(label='\n')
         mc.text(label='This plugin was created as part of the course SFX - tricks of the trade \nat Linköping University during 2020', align='left', font='smallPlainLabelFont')
         mc.setParent('..')
+        mc.separator(height=10)
+        mc.separator( style='in', width=self.SIZE_X, height=20)
         
         ## DISPLAY WINDOW
         mc.showWindow(UI)
