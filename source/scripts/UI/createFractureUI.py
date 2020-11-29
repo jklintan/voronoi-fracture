@@ -94,10 +94,8 @@ class CreateFractureUI:
                     selection.append(existingImplicit[0])
 
         mc.select(selection) 
-        print(self.DISK_AXIS)
         if(len(selection) > 0):
-            mc.voronoiFracture(num_fragments = self.NUM_FRAGMENTS, ds = self.DISK_STEPS, sn = self.STEP_NOISE, da = self.DISK_AXIS)
-        self.DISK_AXIS = ""
+            mc.voronoiFracture(nf = self.NUM_FRAGMENTS, ds = self.DISK_STEPS, sn = self.STEP_NOISE, da = self.DISK_AXIS, cr=self.CURVE_RADIUS)
 
     def _radioButtonUpdate(self, prop, button, val, *args):
         activeButton = 1
@@ -162,7 +160,7 @@ class CreateFractureUI:
         mc.separator( style='in', width=self.SIZE_X, height=20)
         mc.text(' Basic properties', font='boldLabelFont')
         mc.separator(height=10)
-        fragProp = mc.intSliderGrp(label=" Number of Fragments", value = NUM_FRAG_DEFAULT, min=2, max=10000, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        fragProp = mc.intSliderGrp(label=" Number of Fragments", value = self.NUM_FRAGMENTS, min=2, max=10000, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.intSliderGrp(fragProp, e=True, changeCommand = partial(self._applySlider, 'NUM_FRAGMENTS'))
  
         mc.separator(height=10)
@@ -171,20 +169,20 @@ class CreateFractureUI:
         mc.separator(height=20)
         
         # A slider designed to alter curve radius
-        sliderProp1 = mc.floatSliderGrp(label=" Curve radius", min=0.01, max=1, value = CURVE_RADIUS_DEFAULT, field=True, step=0.01, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        sliderProp1 = mc.floatSliderGrp(label=" Curve radius", min=0.01, max=1, value = self.CURVE_RADIUS, field=True, step=0.01, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.floatSliderGrp(sliderProp1, e=True, changeCommand = partial(self._applySlider, 'CURVE_RADIUS'))
 
         # A slider designed to alter disk steps
-        sliderProp3 = mc.intSliderGrp(label=" Disk steps", value = DISK_STEPS_DEFAULT, min=0, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        sliderProp3 = mc.intSliderGrp(label=" Disk steps", value = self.DISK_STEPS, min=0, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.intSliderGrp(sliderProp3, e=True, changeCommand = partial(self._applySlider, 'DISK_STEPS'))
 
         # A slider designed to alter step noise 
-        sliderProp4 = mc.floatSliderGrp(label=" Step noise", min=0, max=1, value = STEP_NOISE_DEFAULT, step=0.01, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        sliderProp4 = mc.floatSliderGrp(label=" Step noise", min=0, max=1, value = self.STEP_NOISE, step=0.01, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.floatSliderGrp(sliderProp4, e=True, changeCommand = partial(self._applySlider, 'STEP_NOISE'))
 
         # Radio buttons for disk axis
         mc.separator(height=5)
-        mc.radioButtonGrp(label=' Disk axis', select = 0, changeCommand1 = partial(self._radioButtonUpdate, 'DISK_AXIS', 1), changeCommand2= partial(self._radioButtonUpdate, 'DISK_AXIS', 2), changeCommand3 = partial(self._radioButtonUpdate, 'DISK_AXIS', 3), changeCommand4 = partial(self._radioButtonUpdate, 'DISK_AXIS', 4), labelArray4=['None', 'x', 'y', 'z'], width = self.SIZE_X, numberOfRadioButtons=4, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.15), (4, self.SIZE_X*0.15)])
+        btns = mc.radioButtonGrp(label=' Disk axis', select = 0, changeCommand1 = partial(self._radioButtonUpdate, 'DISK_AXIS', 1), changeCommand2= partial(self._radioButtonUpdate, 'DISK_AXIS', 2), changeCommand3 = partial(self._radioButtonUpdate, 'DISK_AXIS', 3), changeCommand4 = partial(self._radioButtonUpdate, 'DISK_AXIS', 4), labelArray4=['None', 'x', 'y', 'z'], width = self.SIZE_X, numberOfRadioButtons=4, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.15), (4, self.SIZE_X*0.15)])
 
         # Apply button
         mc.separator( style='in', width=self.SIZE_X, height=20)
