@@ -10,7 +10,7 @@ CURVE_RADIUS_DEFAULT = 0.1
 DISK_AXIS_DEFAULT = ""
 STEPS_DEFAULT = 0
 STEP_NOISE_DEFAULT = 0.05
-MIN_DISTANCE_DEFAULT = 0.1
+MIN_DISTANCE_DEFAULT = 0.01
 
 def Diff(li1, li2):
     li_dif = [i for i in li1 + li2 if i not in li1 or i not in li2]
@@ -28,9 +28,8 @@ def Delete(*args):
     
     # Select all transforms that are deletable
     selection = Diff(l, startup_cameras_transforms)
-    mc.select(selection)
     if(len(selection) > 0):
-        mc.delete()
+        mc.delete(selection)
 
 def AddMesh(*args):
     if(str(args[0]) == '***'):
@@ -61,10 +60,8 @@ def UseCurve(*args):
     selection = mc.ls(readOnly = False, type="mesh") 
    
     print(selection)
-    mc.select(selection)
     if(len(selection) > 0): # Choose selected mesh and make it possible to draw curves on it
-        mc.select(selection[0])
-        mc.makeLive()
+        mc.makeLive(selection[0])
         mc.EPCurveTool()
 
 def UseParticleSystem(*args):
@@ -88,20 +85,7 @@ class CreateFractureUI:
         setattr(self, prop, val)
 
     def _fracture(self,*args):
-        selection = []
-        mc.select(selection)
-        existingMesh = mc.ls(type="mesh", readOnly = False)
-
-        if(len(existingMesh) > 0):
-            selection.append(existingMesh[0])
-            existingImplicit = mc.ls('implicitSphere')
-            if(len(existingImplicit) > 0):
-                if(self.DISK_AXIS != ""):
-                    selection.append(existingImplicit[0])
-
-        mc.select(selection) 
-        if(len(selection) > 0):
-            mc.voronoiFracture(nf = self.NUM_FRAGMENTS, s = self.STEPS, sn = self.STEP_NOISE, da = self.DISK_AXIS, cr=self.CURVE_RADIUS, md=self.MIN_DISTANCE)
+        mc.voronoiFracture(nf = self.NUM_FRAGMENTS, s = self.STEPS, sn = self.STEP_NOISE, da = self.DISK_AXIS, cr=self.CURVE_RADIUS, md=self.MIN_DISTANCE)
 
     def _radioButtonUpdate(self, prop, button, val, *args):
         activeButton = 1
