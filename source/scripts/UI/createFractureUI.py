@@ -8,8 +8,9 @@ from functools import partial
 NUM_FRAG_DEFAULT = 5
 CURVE_RADIUS_DEFAULT = 0.1
 DISK_AXIS_DEFAULT = ""
-DISK_STEPS_DEFAULT = 0
+STEPS_DEFAULT = 0
 STEP_NOISE_DEFAULT = 0.05
+MIN_DISTANCE_DEFAULT = 0.1
 
 def Diff(li1, li2):
     li_dif = [i for i in li1 + li2 if i not in li1 or i not in li2]
@@ -65,6 +66,9 @@ def UseCurve(*args):
         mc.select(selection[0])
         mc.EPCurveTool()
 
+def UseParticleSystem(*args):
+    mc.NCreateEmitter()
+
 class CreateFractureUI:
     def __init__(self, title, x, y):
         self.SIZE_X = x
@@ -73,8 +77,9 @@ class CreateFractureUI:
         self.NUM_FRAGMENTS = NUM_FRAG_DEFAULT
         self.CURVE_RADIUS = CURVE_RADIUS_DEFAULT
         self.DISK_AXIS = DISK_AXIS_DEFAULT
-        self.DISK_STEPS = DISK_STEPS_DEFAULT
+        self.STEPS = STEPS_DEFAULT
         self.STEP_NOISE = STEP_NOISE_DEFAULT
+        self.MIN_DISTANCE = MIN_DISTANCE_DEFAULT
         self._removeOld()
         self._build()
 
@@ -95,7 +100,7 @@ class CreateFractureUI:
 
         mc.select(selection) 
         if(len(selection) > 0):
-            mc.voronoiFracture(nf = self.NUM_FRAGMENTS, ds = self.DISK_STEPS, sn = self.STEP_NOISE, da = self.DISK_AXIS, cr=self.CURVE_RADIUS)
+            mc.voronoiFracture(nf = self.NUM_FRAGMENTS, s = self.STEPS, sn = self.STEP_NOISE, da = self.DISK_AXIS, cr=self.CURVE_RADIUS, md=self.MIN_DISTANCE)
 
     def _radioButtonUpdate(self, prop, button, val, *args):
         activeButton = 1
@@ -148,11 +153,12 @@ class CreateFractureUI:
         mc.separator(height=5)
 
         # Add implicit and clear scene buttons
-        tmpRowWidth = [self.SIZE_X*0.33, self.SIZE_X*0.33, self.SIZE_X*0.33]
-        mc.rowLayout(numberOfColumns=3, columnWidth3=tmpRowWidth)
-        mc.button('Add implicit sphere', width=tmpRowWidth[0], command = AddImplicit)
-        mc.button('Use curves', width=tmpRowWidth[1], command = UseCurve)
-        mc.button('Load object', width=tmpRowWidth[2], command = OpenImportMenu)
+        tmpRowWidth = [self.SIZE_X*0.2, self.SIZE_X*0.2, self.SIZE_X*0.2, self.SIZE_X*0.2]
+        mc.rowLayout(numberOfColumns=4, columnWidth4=tmpRowWidth)
+        mc.button('Load object', width=tmpRowWidth[0], command = OpenImportMenu)
+        mc.button('Add implicit sphere', width=tmpRowWidth[1], command = AddImplicit)
+        mc.button('Use curves', width=tmpRowWidth[2], command = UseCurve)
+        mc.button('Use particle system', width=tmpRowWidth[3], command = UseParticleSystem)
         mc.setParent('..')
 
         # Property sliders
@@ -173,12 +179,16 @@ class CreateFractureUI:
         mc.floatSliderGrp(sliderProp1, e=True, changeCommand = partial(self._applySlider, 'CURVE_RADIUS'))
 
         # A slider designed to alter disk steps
-        sliderProp3 = mc.intSliderGrp(label=" Disk steps", value = self.DISK_STEPS, min=0, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
-        mc.intSliderGrp(sliderProp3, e=True, changeCommand = partial(self._applySlider, 'DISK_STEPS'))
+        sliderProp3 = mc.intSliderGrp(label=" Steps", value = self.STEPS, min=0, max=100, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        mc.intSliderGrp(sliderProp3, e=True, changeCommand = partial(self._applySlider, 'STEPS'))
 
         # A slider designed to alter step noise 
         sliderProp4 = mc.floatSliderGrp(label=" Step noise", min=0, max=1, value = self.STEP_NOISE, step=0.01, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
         mc.floatSliderGrp(sliderProp4, e=True, changeCommand = partial(self._applySlider, 'STEP_NOISE'))
+
+        # A slider designed to alter step noise 
+        sliderProp2 = mc.floatSliderGrp(label=" Min Distance", min=0.01, max=10, value = self.MIN_DISTANCE, step=0.01, field=True, columnAlign=(1,'left'), cw=[(1, self.SIZE_X*0.3), (2, self.SIZE_X*0.2), (3, self.SIZE_X*0.45)])
+        mc.floatSliderGrp(sliderProp2, e=True, changeCommand = partial(self._applySlider, 'MIN_DISTANCE'))
 
         # Radio buttons for disk axis
         mc.separator(height=5)
