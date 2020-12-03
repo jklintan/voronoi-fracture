@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <array>
+#include <filesystem>
 
 #include <maya/MGlobal.h>
 #include <maya/MDagPath.h>
@@ -23,6 +24,7 @@
 #include <maya/MFnNurbsCurve.h>
 #include <maya/MDagPathArray.h>
 #include <maya/MPlug.h>
+#include <maya/MFnParticleSystem.h>
 
 #include "point-distribution.h"
 #include "util.h"
@@ -39,8 +41,12 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     delete_object.setValue(arg_data);
     curve_radius.setValue(arg_data);
     disk_axis.setValue(arg_data);
-    disk_steps.setValue(arg_data);
+    steps.setValue(arg_data);
     step_noise.setValue(arg_data);
+    min_distance.setValue(arg_data);
+
+    // Must be > 0
+    if (step_noise < 1e-6) step_noise = 1e-6;
 
     MSelectionList list;
     MGlobal::getActiveSelectionList(list);
@@ -70,6 +76,12 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     double clip_triangle_half_extent = extent.length() * 10.0;
 
     const std::vector<MPoint> points = generateSeedPoints(BB, list);
+
+    if (points.empty())
+    {
+        displayError("Generated point distribution is empty.");
+        return MS::kFailure;
+    }
 
     // Vector of pointers to seed points used for separate sorting
     std::vector<std::vector<MPoint>::const_iterator> point_ptrs(points.size());
@@ -142,7 +154,7 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             }
             else
             {
-                status = internalClipAndCap(fragment.fullPathName().asChar(), clip_plane);
+                status = internalClipAndCap(fragment, clip_plane);
             }
 
             if (!status)
@@ -152,6 +164,9 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
             }
         }
     }
+
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - begin);
+    displayInfo(("Fracture time: " + std::to_string(duration.count() * 1e-6) + " seconds.").c_str());
 
     if (clipping_mesh)
     {
@@ -168,14 +183,15 @@ MStatus VoronoiFracture::doIt(const MArgList& args)
     dag_modifier.doIt();
 
     // Rename fragments
+    int idx = 0;
     for (unsigned int i = 0; i < fragment_paths.length(); i++)
     {
-        MFnDagNode transform_node_fn(fragment_paths[i].transform());
-        MString new_name = transform_node_fn.setName(("fragment_" + std::to_string(i)).c_str());
+        MObject transform = fragment_paths[i].transform();
+        if (!transform.isNull())
+        {
+            MString new_name = MFnDagNode(transform).setName(("fragment_" + std::to_string(idx++)).c_str());
+        }
     }
-
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - begin);
-    displayInfo(("Fracture time: " + std::to_string(duration.count() * 1e-6) + " seconds.").c_str());
 
     return MS::kSuccess;
 }
@@ -192,20 +208,21 @@ MSyntax VoronoiFracture::syntaxCreator()
     delete_object.addToSyntax(syntax);
     curve_radius.addToSyntax(syntax);
     disk_axis.addToSyntax(syntax);
-    disk_steps.addToSyntax(syntax);
+    steps.addToSyntax(syntax);
     step_noise.addToSyntax(syntax);
+    min_distance.addToSyntax(syntax);
     return syntax;
 }
 
 // Mesh clip and cap using internal commands polyCut and polyCloseBorder
-MStatus VoronoiFracture::internalClipAndCap(const char* object, const Plane& clip_plane)
+MStatus VoronoiFracture::internalClipAndCap(MFnMesh& object, const Plane& clip_plane)
 {
     const MVector& n = clip_plane.normal;
     const MVector& p = clip_plane.point;
 
     return MGlobal::executePythonCommand(formatString(
         "Util.clipAndCap('%s', [%f,%f,%f], [%f,%f,%f])", 
-        object, -n.x, -n.y, -n.z, p.x, p.y, p.z
+        object.fullPathName().asChar(), -n.x, -n.y, -n.z, p.x, p.y, p.z
     ));
 }
 
@@ -286,7 +303,8 @@ std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, 
 
     MItSelectionList sphere_it(list, MFn::kImplicitSphere);
     MItSelectionList curve_it(list, MFn::kNurbsCurve);
-
+    MItSelectionList particle_it(list, MFn::kNParticle);
+    
     if (!sphere_it.isDone())
     {
         // createNode implicitSphere
@@ -294,6 +312,8 @@ std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, 
         sphere_it.getDagPath(node);
         MFnDagNode node_fn(node);
         MPlug radius_plug = node_fn.findPlug("radius", true);
+
+        displayInfo(MString("Using ") + node_fn.fullPathName());
 
         double radius = radius_plug.asDouble();
         MMatrix M = node.inclusiveMatrix();
@@ -304,7 +324,6 @@ std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, 
         else if ((MString)disk_axis == "y") disk_axis_i = 2;
         else if ((MString)disk_axis == "z") disk_axis_i = 3;
 
-
         std::array<MVector, 3> axes = {
             MVector(radius, 0, 0) * M - position,
             MVector(0, radius, 0) * M - position,
@@ -313,14 +332,17 @@ std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, 
 
         if (disk_axis_i == 0)
         {
-            points = PointDistribution::radialQuadratic(position, axes, num_fragments);
+            if ((unsigned)steps == 0)
+                points = PointDistribution::sphereQuadratic(position, axes, num_fragments);
+            else
+                points = PointDistribution::sphereSteps(position, axes, steps, step_noise, num_fragments);
         }
         else
         {
-            if ((unsigned)disk_steps == 0)
+            if ((unsigned)steps == 0)
                 points = PointDistribution::diskQuadratic(position, axes, disk_axis_i, num_fragments);
             else
-                points = PointDistribution::diskSteps(position, axes, disk_steps, disk_axis_i, step_noise, num_fragments);
+                points = PointDistribution::diskSteps(position, axes, steps, disk_axis_i, step_noise, num_fragments);
         }
     }
     else if (!curve_it.isDone())
@@ -335,10 +357,24 @@ std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, 
 
         points = PointDistribution::curve(curve, curve_radius, num_fragments);
     }
+    else if (!particle_it.isDone())
+    {
+        MDagPath node;
+        particle_it.getDagPath(node);
+        MFnDagNode node_fn(node);
+
+        displayInfo(MString("Using ") + node_fn.fullPathName());
+
+        MFnParticleSystem particles(node);
+
+        points = PointDistribution::particles(particles);
+    }
     else
     {
         points = PointDistribution::uniformBoundingBox(BB.min(), BB.max(), num_fragments);
     }
+
+    points = PointDistribution::removeDuplicates(points, min_distance);
 
     return points;
 }

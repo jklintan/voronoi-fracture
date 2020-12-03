@@ -3,6 +3,7 @@
 inline constexpr char py_utilities[] = R"py(
 
 import maya.cmds as mc
+import pymel.core as pm
 
 class Util:
     def __init__(self):
@@ -31,9 +32,27 @@ class Util:
     def clipAndCap(obj, n, p):
         angle = mc.angleBetween(euler = True, v1 = [0,0,1], v2 = n)
         mc.polyCut(obj, deleteFaces = True, cutPlaneCenter = p, cutPlaneRotate = angle)
+        mc.polyCloseBorder(obj)
 
-        faces = mc.polyEvaluate(obj, face = True)
+    # https://forums.autodesk.com/t5/maya-programming/anti-aliasing-in-viewport-2-0/td-p/7182604
+    @staticmethod
+    def enableAA():
+        hwr = pm.PyNode("hardwareRenderingGlobals")
+        try:
+            hwr.multiSampleEnable.set(1)
+        except:
+            print("Couldn't set Anti-aliasing")
 
-        if faces > 2:
-            mc.polyCloseBorder(obj)
+    @staticmethod
+    def clipAndCapMat(obj, n, p, mat):
+        angle = mc.angleBetween(euler = True, v1 = [0,0,1], v2 = n)
+        mc.polyCut(obj, deleteFaces = True, cutPlaneCenter = p, cutPlaneRotate = angle)
+        
+        faces_before = mc.polyEvaluate(obj, face=True)
+        mc.polyCloseBorder(obj)
+        faces_after = mc.polyEvaluate(obj, face=True)
+        new_faces = faces_after - faces_before
+
+        hole_faces = ('%s.f[ %d ]' % (obj, (faces_after + new_faces - 1)))
+        mc.sets(hole_faces, forceElement = (mat + 'SG'), e=True)
 )py";

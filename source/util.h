@@ -2,6 +2,7 @@
 
 #include <vector>
 #include <maya/MVector.h>
+#include <maya/MGlobal.h>
 
 struct Plane
 {
@@ -16,6 +17,12 @@ struct Plane
 Plane getBisectorPlane(const MPoint& p0, const MPoint& p1);
 
 MVector orthogonalUnitVector(const MVector& v);
+
+template<class T>
+void displayNumber(const T& number)
+{
+    MGlobal::displayInfo(std::to_string(number).c_str());
+}
 
 // From https://stackoverflow.com/a/26221725
 template<typename ... Args>
