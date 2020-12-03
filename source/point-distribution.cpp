@@ -89,7 +89,6 @@ std::vector<MPoint> PointDistribution::diskSteps(const MPoint& position, const s
     return points;
 }
 
-#include <maya/MGlobal.h>
 std::vector<MPoint> PointDistribution::sphereSteps(const MPoint& position, const std::array<MVector, 3>& axes, size_t steps, double noise_sigma, size_t num)
 {
     // num / steps = phi_steps * theta_steps = phi_steps * phi_steps * 0.5 <=>

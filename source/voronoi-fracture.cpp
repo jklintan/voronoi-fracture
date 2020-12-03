@@ -2,7 +2,6 @@
 
 #include <chrono>
 #include <array>
-#include <filesystem>
 
 #include <maya/MGlobal.h>
 #include <maya/MDagPath.h>
@@ -317,17 +316,21 @@ std::vector<MPoint> VoronoiFracture::generateSeedPoints(const MBoundingBox& BB, 
 
         double radius = radius_plug.asDouble();
         MMatrix M = node.inclusiveMatrix();
-        MPoint position = MPoint(0, 0, 0, 1.0) * M;
+        MPoint position = MTransformationMatrix(M).getTranslation(MSpace::kWorld);
 
         unsigned disk_axis_i = 0;
         if ((MString)disk_axis == "x") disk_axis_i = 1;
         else if ((MString)disk_axis == "y") disk_axis_i = 2;
         else if ((MString)disk_axis == "z") disk_axis_i = 3;
 
+        MTransformationMatrix axes_transform(M);
+        axes_transform.setTranslation(MVector(0, 0, 0), MSpace::kWorld);
+        MMatrix M_axes = axes_transform.asMatrix();
+
         std::array<MVector, 3> axes = {
-            MVector(radius, 0, 0) * M - position,
-            MVector(0, radius, 0) * M - position,
-            MVector(0, 0, radius) * M - position
+            MVector(radius, 0, 0) * M_axes,
+            MVector(0, radius, 0) * M_axes,
+            MVector(0, 0, radius) * M_axes
         };
 
         if (disk_axis_i == 0)
