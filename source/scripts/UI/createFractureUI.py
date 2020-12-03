@@ -62,8 +62,9 @@ def UseCurve(*args):
    
     print(selection)
     mc.select(selection)
-    if(len(selection) > 0):
+    if(len(selection) > 0): # Choose selected mesh and make it possible to draw curves on it
         mc.select(selection[0])
+        mc.makeLive()
         mc.EPCurveTool()
 
 def UseParticleSystem(*args):
@@ -153,12 +154,12 @@ class CreateFractureUI:
         mc.separator(height=5)
 
         # Add implicit and clear scene buttons
-        tmpRowWidth = [self.SIZE_X*0.2, self.SIZE_X*0.2, self.SIZE_X*0.2, self.SIZE_X*0.2]
+        tmpRowWidth = [self.SIZE_X*0.245, self.SIZE_X*0.245, self.SIZE_X*0.245, self.SIZE_X*0.245]
         mc.rowLayout(numberOfColumns=4, columnWidth4=tmpRowWidth)
         mc.button('Load object', width=tmpRowWidth[0], command = OpenImportMenu)
-        mc.button('Add implicit sphere', width=tmpRowWidth[1], command = AddImplicit)
+        mc.button('Implicit sphere', width=tmpRowWidth[1], command = AddImplicit)
         mc.button('Use curves', width=tmpRowWidth[2], command = UseCurve)
-        mc.button('Use particle system', width=tmpRowWidth[3], command = UseParticleSystem)
+        mc.button('Particle system', width=tmpRowWidth[3], command = UseParticleSystem)
         mc.setParent('..')
 
         # Property sliders
